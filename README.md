@@ -9,7 +9,11 @@ Aşama 1’deki CLI uygulamasına **harici API** (Open Library) entegrasyonu ekl
 - Ağ/404 hatalarında güvenli davranış; aynı ISBN ikinci kez eklenmez
 
 ## Proje Yapısı
+- stage1.py → Temel CLI uygulaması (kitap ekleme/silme vs.)
 
+- stage2.py → Open Library API entegrasyonu (ISBN ile otomatik kitap bilgisi çekme)
+
+- sys_path.py → Muhtemelen PYTHONPATH ile ilgili test/debug amaçlı yazdığın bir yardımcı dosya (ör. import yollarını ayarlamak veya debug için path eklemek).
 
 ## Gereksinimler
 - Python 3.11+
