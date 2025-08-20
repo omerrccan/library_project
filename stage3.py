@@ -1,4 +1,4 @@
-# stage2.py (güncel)
+# stage1.py (güncel)
 import json
 from typing import List, Optional, Callable
 import httpx  # <-- Aşama 2: httpx eklendi
