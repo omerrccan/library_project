@@ -1,46 +1,75 @@
-# tests/test_library.py
-import json
-from stage1 import Book, Library
+# tests/test_library_stage2.py
+import httpx
+from stage2 import Library, Book
 
-def test_add_and_persist(tmp_path):
+class FakeResponse:
+    def __init__(self, status_code=200, json_data=None):
+        self.status_code = status_code
+        self._json_data = json_data or {}
+
+    def json(self):
+        return self._json_data
+
+    def raise_for_status(self):
+        if 400 <= self.status_code:
+            raise httpx.HTTPStatusError("err", request=None, response=None)
+
+def make_fake_http_get_ok():
+    """İyi senaryo: ISBN -> kitap json, authors -> isimler"""
+    def _fake_get(url, timeout=10):
+        if "isbn/9780199535675.json" in url or "isbn/978-0199535675.json" in url:
+            return FakeResponse(200, {
+                "title": "Ulysses",
+                "authors": [{"key": "/authors/OL26320A"}]
+            })
+        if "/authors/OL26320A.json" in url:
+            return FakeResponse(200, {"name": "James Joyce"})
+        return FakeResponse(404, {})
+    return _fake_get
+
+def make_fake_http_get_404():
+    def _fake_get(url, timeout=10):
+        return FakeResponse(404, {})
+    return _fake_get
+
+def make_fake_http_get_network_error():
+    def _fake_get(url, timeout=10):
+        raise httpx.RequestError("network fail")
+    return _fake_get
+
+def test_add_book_by_isbn_success(tmp_path):
     file_path = tmp_path / "library.json"
-    lib = Library(str(file_path))
+    lib = Library(str(file_path), http_get=make_fake_http_get_ok())
 
-    b = Book("Ulysses", "James Joyce", "978-0199535675")
-    ok = lib.add_book(b)
+    ok = lib.add_book_by_isbn("978-0199535675")
     assert ok is True
-
-    # JSON gerçekten yazıldı mı?
-    assert file_path.exists()
-    data = json.loads(file_path.read_text(encoding="utf-8"))
-    assert len(data) == 1
-    assert data[0]["title"] == "Ulysses"
-
-    # Uygulama yeniden açılmış gibi yeni Library yarat ve yükleniyor mu?
+    # kalıcı yazıldı mı?
     lib2 = Library(str(file_path))
-    assert len(lib2.list_books()) == 1
-    loaded = lib2.find_book("978-0199535675")
-    assert loaded is not None
-    assert loaded.title == "Ulysses"
+    b = lib2.find_book("978-0199535675")
+    assert b is not None
+    assert b.title == "Ulysses"
+    assert "James Joyce" in b.author
 
-def test_remove_book(tmp_path):
+def test_add_book_by_isbn_not_found(tmp_path):
     file_path = tmp_path / "library.json"
-    lib = Library(str(file_path))
+    lib = Library(str(file_path), http_get=make_fake_http_get_404())
 
-    lib.add_book(Book("Book A", "Auth A", "111"))
-    lib.add_book(Book("Book B", "Auth B", "222"))
-    assert len(lib.list_books()) == 2
+    ok = lib.add_book_by_isbn("0000000000")
+    assert ok is False
+    assert lib.list_books() == []
 
-    ok = lib.remove_book("111")
-    assert ok is True
-    assert lib.find_book("111") is None
-    assert len(lib.list_books()) == 1
-
-def test_duplicate_isbn_blocked(tmp_path):
+def test_add_book_by_isbn_network_error(tmp_path):
     file_path = tmp_path / "library.json"
-    lib = Library(str(file_path))
+    lib = Library(str(file_path), http_get=make_fake_http_get_network_error())
 
-    assert lib.add_book(Book("X", "Y", "999")) is True
-    # aynı ISBN tekrar eklenmesin
-    assert lib.add_book(Book("X2", "Y2", "999")) is False
-    assert len(lib.list_books()) == 1
+    ok = lib.add_book_by_isbn("978-0199535675")
+    assert ok is False
+    assert lib.list_books() == []
+
+def test_add_book_by_isbn_duplicate(tmp_path):
+    file_path = tmp_path / "library.json"
+    lib = Library(str(file_path), http_get=make_fake_http_get_ok())
+
+    assert lib.add_book_by_isbn("978-0199535675") is True
+    # ikinci kez aynı ISBN
+    assert lib.add_book_by_isbn("978-0199535675") is False
